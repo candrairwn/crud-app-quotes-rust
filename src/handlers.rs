@@ -61,3 +61,20 @@ pub async fn create_quote(
         Err(_) => Err(http::StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
+
+pub async fn read_quotes(
+    extract::State(pool): extract::State<PgPool>
+) -> Result<axum::Json<Vec<Quote>>, http::StatusCode>{
+    let res = sqlx::query_as::<_, Quote>(
+        r#"
+        SELECT * FROM quotes
+        "#,
+    )
+    .fetch_all(&pool)
+    .await;
+
+    match res {
+        Ok(quotes) => Ok(axum::Json(quotes)),
+        Err(_) => Err(http::StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
