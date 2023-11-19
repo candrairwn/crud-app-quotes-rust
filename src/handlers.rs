@@ -11,6 +11,11 @@ pub struct Quote {
     updated_at: chrono::DateTime<chrono::Utc>
 }
 
+#[derive(Serialize)]
+pub struct  ResponseData<T> {
+    data: T,
+}
+
 impl Quote {
     fn new(book: String, quote: String) -> Self {
         let now = chrono::Utc::now();
@@ -64,7 +69,7 @@ pub async fn create_quote(
 
 pub async fn read_quotes(
     extract::State(pool): extract::State<PgPool>
-) -> Result<axum::Json<Vec<Quote>>, http::StatusCode>{
+) -> Result<axum::Json<ResponseData<Vec<Quote>>>, http::StatusCode>{
     let res = sqlx::query_as::<_, Quote>(
         r#"
         SELECT * FROM quotes
@@ -74,7 +79,62 @@ pub async fn read_quotes(
     .await;
 
     match res {
-        Ok(quotes) => Ok(axum::Json(quotes)),
+        Ok(quotes) => Ok(axum::Json(ResponseData {data: quotes})),
         Err(_) => Err(http::StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+pub async fn update_quotes(
+    extract::State(pool): extract::State<PgPool>,
+    extract::Path(id): extract::Path<uuid::Uuid>,
+    axum::Json(payload): axum::Json<CreateQuote>,
+) -> http::StatusCode{
+    let now = chrono::Utc::now();
+
+    let res = sqlx::query(
+        r#"
+        UPDATE quotes
+        SET book = $1, quote = $2, updated_at = $3
+        WHERE id = $4
+        "#,
+    )
+    .bind(&payload.book)
+    .bind(&payload.quote)
+    .bind(&now)
+    .bind(&id)
+    .execute(&pool)
+    .await
+    .map(|res| match res.rows_affected() {
+        0 => http::StatusCode::NOT_FOUND,
+        _ => http::StatusCode::OK,
+    });
+        
+    match res {
+        Ok(status) => status,
+        Err(_) => http::StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+pub async fn delete_quotes(
+    extract::State(pool): extract::State<PgPool>,
+    extract::Path(id): extract::Path<uuid::Uuid>,
+) -> http::StatusCode{
+    let res = sqlx::query(
+        r#"
+        DELETE FROM quotes
+        WHERE id = $1
+        "#,
+    )
+    .bind(&id)
+    .execute(&pool)
+    .await
+    .map(|res| match res.rows_affected() {
+        0 => http::StatusCode::NOT_FOUND,
+        _ => http::StatusCode::OK,
+    });
+        
+    match res {
+        Ok(status) => status,
+        Err(_) => http::StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
